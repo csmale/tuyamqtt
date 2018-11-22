@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.28010.2026
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "TuyaSmartPlug", "TuyaSmartPlug\TuyaSmartPlug.vbproj", "{E5246960-DC35-42DE-A93F-56A19829DC40}"
+Project("{778DAE3C-4631-46EA-AA77-85C1314464D9}") = "TuyaSmartPlug", "TuyaSmartPlug\TuyaSmartPlug.vbproj", "{E5246960-DC35-42DE-A93F-56A19829DC40}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -20,6 +20,12 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
+		BuildVersion_BuildVersioningStyle = None.None.Increment.None
 		SolutionGuid = {04E09679-1BA5-42D2-A5E7-AF72018102FB}
+		BuildVersion_StartDate = 2000/1/1
+		BuildVersion_AssemblyInfoFilename = TuyaSmartPlug\AssemblyInfo.cs
+		BuildVersion_UseGlobalSettings = True
+		BuildVersion_UpdateAssemblyVersion = True
+		BuildVersion_UpdateFileVersion = True
 	EndGlobalSection
 EndGlobal

@@ -5,22 +5,31 @@ Imports System.Reflection
 Imports m4rcus.TuyaCore
 Imports uPLibrary.Networking.M2Mqtt
 
+
+
 ''' <summary>
 ''' Uses TuyaCore component from https://github.com/Marcus-L/m4rcus.TuyaCore
 ''' </summary>
 
 Class TuyaConfig
     Public Topic As String
+    Public Name As String
     Public Dev As New TuyaPlug
+    Friend Thread As Threading.Thread
+    Friend Watchdog As DateTime
 End Class
 
 Module TuyaMqtt
+    Const MIN_STARTUP_DELAY As Integer = 1000
     Dim StartupDelay As Integer = 1000    ' delay between thread starts
+    Const MIN_POLL_DELAY As Integer = 1000
     Dim PollDelay As Integer = 1000       ' delay between cancelled checkes
+    Const MIN_SCAN_DELAY As Integer = 1000
     Dim ScanDelay As Integer = 5000       ' delay between readings for each device
 
-    Dim bVerbose As Boolean = False
+    Dim bVerbose As Boolean = True
 
+    Dim devices As New List(Of TuyaConfig)
     Dim _cancel As Boolean
 
     Dim mqtt As MqttClient
@@ -32,10 +41,21 @@ Module TuyaMqtt
     Dim mqttQos As Integer = 1
     Dim mqttRetain As Boolean = False
 
-    Dim mqttLock As New Object
+    ReadOnly mqttLock As New Object
+
+    Function GetProgVersion() As String
+        Dim execAssembly = Assembly.GetCallingAssembly()
+        Dim name = execAssembly.GetName()
+        Dim sTmp As String
+
+        sTmp = $"{name.Name} {name.Version.Major.ToString():0}.{name.Version.Minor.ToString():0}.{name.Version.Build.ToString():0} for .Net {execAssembly.ImageRuntimeVersion}"
+        Return sTmp
+    End Function
     Sub Main(args As String())
-        Dim devices As New List(Of TuyaConfig)
+
         Dim xDoc As New XmlDocument()
+
+        Console.WriteLine(GetProgVersion())
 
         For Each sArg In args
             Select Case sArg
@@ -47,8 +67,11 @@ Module TuyaMqtt
         xDoc.Load(Path.Combine(ApplicationPath(), "config.xml"))
         Dim xConfig As XmlElement = xDoc.SelectSingleNode("TuyaMqtt")
         Integer.TryParse(NodeText(xConfig.SelectSingleNode("Scan/ScanDelay")), ScanDelay)
+        ScanDelay = Math.Max(ScanDelay, MIN_SCAN_DELAY)
         Integer.TryParse(NodeText(xConfig.SelectSingleNode("Scan/StartupDelay")), StartupDelay)
+        StartupDelay = Math.Min(StartupDelay, MIN_STARTUP_DELAY)
         Integer.TryParse(NodeText(xConfig.SelectSingleNode("Scan/PollDelay")), PollDelay)
+        PollDelay = Math.Max(PollDelay, MIN_POLL_DELAY)
 
         Dim xMqtt As XmlElement = xConfig.SelectSingleNode("Mqtt")
         mqttServer = NodeText(xMqtt.SelectSingleNode("Server"))
@@ -66,12 +89,13 @@ Module TuyaMqtt
             Dim d As New TuyaConfig
             With d
                 .Topic = NodeText(xDev.SelectSingleNode("Topic"))
+                .Name = NodeText(xDev.SelectSingleNode("Name"))
                 .Dev.IP = NodeText(xDev.SelectSingleNode("IP"))
+                If .Name.Length = 0 Then .Name = .Dev.IP
                 .Dev.LocalKey = NodeText(xDev.SelectSingleNode("LocalKey"))
                 .Dev.Id = NodeText(xDev.SelectSingleNode("ID"))
                 If .Dev.IP.Length * .Dev.LocalKey.Length * .Dev.Id.Length * .Topic.Length = 0 Then
-                    Console.WriteLine("Missing value in config")
-                    Exit Sub
+                    Console.WriteLine("Missing value in config: one of IP, LocalKey, Id, Topic not specified.")
                 Else
                     devices.Add(d)
                 End If
@@ -85,44 +109,90 @@ Module TuyaMqtt
 
         Console.WriteLine($"Found {devices.Count} devices.")
         For Each d In devices
-            Console.WriteLine($"IP: {d.Dev.IP} on topic: {d.Topic}")
+            Console.WriteLine($"IP: {d.Dev.IP} Name: {d.Name} on topic: {d.Topic}")
         Next
 
         Console.TreatControlCAsInput = False
         AddHandler Console.CancelKeyPress, AddressOf HandleBreak
 
-        Dim t As New List(Of Threading.Thread)
-
         For Each d In devices
-            Dim thr = New Threading.Thread(Sub() LoopSingle(d))
-            t.Add(thr)
-            thr.Start()
-            Threading.Thread.Sleep(StartupDelay) '  To stagger the operations a bit
+            Try
+                Dim thr = New Threading.Thread(Sub() LoopSingle(d))
+                thr.IsBackground = True
+                d.Thread = thr
+                d.Thread.Name = d.Name
+                d.Watchdog = DateTime.UtcNow()
+                thr.Start()
+                Console.WriteLine($"Thread {thr.ManagedThreadId} started for {d.Name}")
+                Threading.Thread.Sleep(StartupDelay) '  To stagger the operations a bit
+            Catch e As Exception
+                Console.WriteLine($"Exception starting thread {d.Thread.ManagedThreadId} for {d.Name}: {e.Message}")
+            End Try
         Next
 
         _cancel = False
         While Not _cancel
             Threading.Thread.Sleep(PollDelay)
+            Dim watchdogNow As DateTime = DateTime.UtcNow()
+            For Each d In devices
+                Dim wdint As TimeSpan = watchdogNow.Subtract(d.Watchdog)
+                If wdint.TotalMilliseconds > (10 * ScanDelay) Then
+                    Console.WriteLine($"Thread {d.Thread.ManagedThreadId} for {d.Name} is not responding, interrupting")
+                    Try
+                        d.Thread.Interrupt()
+                    Catch e As Exception
+                        Console.WriteLine($"Exception interrupting thread {d.Thread.ManagedThreadId} for {d.Name}: {e.Message}")
+                    End Try
+                ElseIf Not d.Thread.IsAlive Then
+                    Console.WriteLine($"Thread {d.Thread.ManagedThreadId} for {d.Name} has died, restarting, state={d.Thread.ThreadState}")
+                    Try
+                        d.Thread = New Threading.Thread(Sub() LoopSingle(d))
+                        d.Thread.IsBackground = True
+                        d.Thread.Name = d.Name
+                        d.Thread.Start()
+                        Console.WriteLine($"Thread {d.Thread.ManagedThreadId} started for {d.Name}")
+                        Threading.Thread.Sleep(StartupDelay) '  To stagger the operations a bit
+                    Catch e As Exception
+                        Console.WriteLine($"Exception starting thread {d.Thread.ManagedThreadId} for {d.Name}: {e.Message}")
+                    End Try
+                End If
+            Next
         End While
 
-        For Each thr In t
-            thr.Abort()
-            thr.Join()
+        For Each d In devices
+            Try
+                d.Thread.Abort()
+                d.Thread.Join()
+            Catch e As Exception
+                Console.WriteLine($"Exception collecting thread {d.Thread.ManagedThreadId} for {d.Name}: {e.Message}")
+            End Try
         Next
     End Sub
+    ''' <summary>
+    ''' Loop for a single device. Get status and post, then sleep and repeat.
+    ''' </summary>
+    ''' <param name="tp"></param>
     Private Sub LoopSingle(tp As TuyaConfig)
+        Dim stat As TuyaStatus
+        Console.WriteLine($"LoopSingle entered for {tp.Name} on thread {Threading.Thread.CurrentThread.Name} #{Threading.Thread.CurrentThread.ManagedThreadId}")
         While True
-            QuerySingle(tp)
-            Threading.Thread.Sleep(ScanDelay)
             If _cancel Then Exit While
+            ' Threading.Thread.Sleep(ScanDelay)
+            stat = QuerySingle(tp)
+            tp.Watchdog = Date.UtcNow()
         End While
+        Console.WriteLine($"LoopSingle thread #{Threading.Thread.CurrentThread.ManagedThreadId} complete for {tp.Name}")
     End Sub
-    Async Function QuerySingle(tp As TuyaConfig) As Task(Of TuyaStatus)
+    Function QuerySingle(tp As TuyaConfig) As TuyaStatus
         Dim res As TuyaStatus
         Dim sMsg As String
         Dim msg() As Byte
+
+        Threading.Thread.Sleep(ScanDelay)
         Try
-            res = Await tp.Dev.GetStatus()
+            Dim x As Task(Of TuyaStatus)
+            x = tp.Dev.GetStatus()
+            res = x.Result
             With res
                 .Power_W /= 10
                 ' If bVerbose Then Console.WriteLine($"Powered { .Powered}, Voltage { .Voltage_V}V, Current { .Current_mA}mA, Power { .Power_W}W")
@@ -135,20 +205,22 @@ Module TuyaMqtt
                     If mqtt.IsConnected Then
                         mqtt.Publish(tp.Topic, msg, mqttQos, True)
                     Else
-                        Console.WriteLine($"Unable to connect to MQTT on {mqttServer}:{mqttPort}")
+                        Console.WriteLine($"Unable to connect to MQTT on {mqttServer}:{mqttPort} for topic {tp.Topic}")
                         ' mqtt problem...
                     End If
                 End SyncLock
             End With
             Return res
         Catch e As Exception
-            Console.WriteLine($"Error: {e.Message}")
+            Console.WriteLine($"Error from {tp.Name}: {e.Message}")
             Return Nothing
         End Try
     End Function
     Private Function FormatMqttMessage(res As TuyaStatus, topic As String) As String
+        Dim ts As String = DateTime.UtcNow.ToString("o")
         Dim m As String = "{" &
             JSonString("sensor", topic) & "," &
+            JSonString("timestamp", ts) & "," &
             JSonVar("onoff", If(res.Powered, 1, 0)) & "," &
             JSonVar("voltage", res.Voltage_V.ToString()) & "," &
             JSonVar("current", res.Current_mA.ToString()) & "," &
@@ -178,7 +250,12 @@ Module TuyaMqtt
     End Function
     Sub HandleBreak(ByVal sender As Object, ByVal args As ConsoleCancelEventArgs)
         Console.WriteLine("Cancelling...")
-        Threading.Thread.CurrentThread.Abort()
         _cancel = True
+        For Each d In devices
+            If (d.Thread.ThreadState And Threading.ThreadState.WaitSleepJoin) <> 0 Then
+                d.Thread.Interrupt()
+            End If
+            d.Thread.Abort()
+        Next
     End Sub
 End Module

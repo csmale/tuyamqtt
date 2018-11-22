@@ -4,6 +4,15 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>TuyaSmartPlug</RootNamespace>
     <TargetFramework>netcoreapp2.1</TargetFramework>
+    <StartupObject>Sub Main</StartupObject>
+    <PackageId>TuyaMQTT</PackageId>
+    <Authors>Colin Smale</Authors>
+    <Product>TuyaMQTT</Product>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,5 +28,7 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <ProjectExtensions><VisualStudio><UserProperties BuildVersion_UpdateFileVersion="True" BuildVersion_UseGlobalSettings="True" BuildVersion_StartDate="2000/1/1" BuildVersion_UpdateAssemblyVersion="True" BuildVersion_AssemblyInfoFilename="Program.vb" /></VisualStudio></ProjectExtensions>
 
 </Project>

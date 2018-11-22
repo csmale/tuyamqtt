@@ -18,6 +18,7 @@
   <Devices>
     <Device>
       <IP>192.168.0.202</IP>
+      <Name>tuya001</Name>
       <MAC>bc:dd:c2:03:04:93</MAC>
       <LocalKey>9643128991b828a4</LocalKey>
       <ID>05200314bcddc2030493</ID>
@@ -25,10 +26,27 @@
     </Device>
     <Device>
       <IP>192.168.0.203</IP>
+      <Name>tuya002</Name>
       <MAC>b4:e6:2d:13:b8:45</MAC>
       <LocalKey>39c7dcfac1f2372f</LocalKey>
       <ID>04200101b4e62d13b845</ID>
       <Topic>sensors/smartplug/tuya002</Topic>
+    </Device>
+    <Device>
+      <IP>192.168.0.204</IP>
+      <Name>tuya003</Name>
+      <MAC>b4:e6:2d:13:b1:48</MAC>
+      <LocalKey>cb175a36249ffa74</LocalKey>
+      <ID>04200101b4e62d13b148</ID>
+      <Topic>sensors/smartplug/tuya003</Topic>
+    </Device>
+      <Device>
+      <IP>192.168.0.205</IP>
+      <Name>tuya004</Name>
+      <MAC>80:7d:3a:4e:30:ce</MAC>
+      <LocalKey>158ee37d8737ac7f</LocalKey>
+      <ID>85585065807d3a4e30ce</ID>
+      <Topic>sensors/smartplug/tuya004</Topic>
     </Device>
   </Devices>
 </TuyaMqtt>
